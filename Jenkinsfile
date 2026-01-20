@@ -3,7 +3,10 @@ pipeline {
 
     tools {
         jdk 'Java 21'
-        maven 'Maven 3.9.0'
+    }
+
+    environment {
+        APP_PORT = "8081"
     }
 
     stages {
@@ -15,14 +18,15 @@ pipeline {
 
         stage('Build') {
             steps {
-                bat 'mvn clean package'
+                bat '.\\mvnw.cmd clean package -DskipTests'
             }
         }
 
         stage('Run') {
             steps {
-                // Runs the Spring Boot app on port 8081
-                bat 'mvn spring-boot:run -Dserver.port=8081'
+                timeout(time: 5, unit: 'MINUTES') {
+                    bat ".\\mvnw.cmd spring-boot:run -Dserver.port=%APP_PORT%"
+                }
             }
         }
     }
