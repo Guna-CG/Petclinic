@@ -80,17 +80,3 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "1000m"
-          readinessProbe:
-            httpGet:
-              path: /readyz
-              port: http
-          volumeMounts:
-            - mountPath: /bindings/secret
-              name: binding
-              readOnly: true
-      volumes:
-        - name: binding
-          projected:
-            sources:
-              - secret:
-                  name: demo-db
