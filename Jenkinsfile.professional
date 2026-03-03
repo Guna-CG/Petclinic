@@ -16,6 +16,10 @@ pipeline {
                         returnStdout: true
                     ).trim()
                     echo "Building Pet Clinic version: ${env.BUILD_VERSION}"
+                    
+                    // Set build description with version
+                    currentBuild.description = "Version: ${env.BUILD_VERSION}"
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} - ${env.BUILD_VERSION}"
                 }
             }
         }
@@ -35,6 +39,10 @@ pipeline {
             post {
                 always {
                     junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+                    script {
+                        def testResults = junit 'target/surefire-reports/*.xml'
+                        echo "📊 Test Results: ${testResults.totalCount} tests, ${testResults.failCount} failures"
+                    }
                 }
                 success {
                     echo "✅ All tests passed!"
@@ -113,15 +121,22 @@ pipeline {
         success {
             echo "🎉 Pipeline completed successfully!"
             echo "🌐 Access the application at: http://localhost:${APP_PORT}"
+            echo "📊 All stages passed!"
         }
         failure {
             echo "❌ Pipeline failed. Check the logs above."
+            echo "Failed at stage: ${env.STAGE_NAME}"
         }
         always {
-            echo "📊 Build Summary:"
-            echo "   Version: ${env.BUILD_VERSION}"
-            echo "   Build: #${env.BUILD_NUMBER}"
-            echo "   Status: ${currentBuild.currentResult}"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "📊 BUILD SUMMARY"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "   Version:     ${env.BUILD_VERSION}"
+            echo "   Build:       #${env.BUILD_NUMBER}"
+            echo "   Status:      ${currentBuild.currentResult}"
+            echo "   Duration:    ${currentBuild.durationString}"
+            echo "   Started by:  ${currentBuild.getBuildCauses()[0].shortDescription}"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         }
     }
 }
