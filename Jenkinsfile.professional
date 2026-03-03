@@ -1,0 +1,127 @@
+pipeline {
+    agent any
+    
+    environment {
+        MAVEN_OPTS = '-Xmx2g -XX:MaxMetaspaceSize=512m'
+        APP_PORT = '8081'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    env.BUILD_VERSION = sh(
+                        script: "./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout",
+                        returnStdout: true
+                    ).trim()
+                    echo "Building Pet Clinic version: ${env.BUILD_VERSION}"
+                }
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo "🔨 Building the project with Maven..."
+                sh './mvnw clean compile -B'
+            }
+        }
+        
+        stage('Unit Tests') {
+            steps {
+                echo "🧪 Running unit tests..."
+                sh './mvnw test -B'
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+                }
+                success {
+                    echo "✅ All tests passed!"
+                }
+                failure {
+                    echo "❌ Tests failed. Check reports."
+                }
+            }
+        }
+        
+        stage('Package') {
+            steps {
+                echo "📦 Packaging application..."
+                sh './mvnw package -B -DskipTests'
+            }
+        }
+        
+        stage('Archive Artifacts') {
+            steps {
+                echo "💾 Archiving JAR artifacts..."
+                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+            }
+        }
+        
+        stage('Deploy to Container') {
+            steps {
+                script {
+                    echo "🚀 Deploying Spring Boot application on port ${APP_PORT}..."
+                    
+                    // Kill any existing instance
+                    sh '''
+                        if [ -f app.pid ]; then
+                            OLD_PID=$(cat app.pid)
+                            if ps -p $OLD_PID > /dev/null 2>&1; then
+                                echo "Stopping old instance (PID: $OLD_PID)..."
+                                kill $OLD_PID || true
+                                sleep 3
+                            fi
+                        fi
+                    '''
+                    
+                    // Start new instance
+                    sh """
+                        BUILD_ID=dontKillMe nohup java -jar target/*.jar --server.port=${APP_PORT} > petclinic.log 2>&1 &
+                        echo \$! > app.pid
+                        sleep 5
+                        echo "✅ Application started on port ${APP_PORT}"
+                        echo "PID: \$(cat app.pid)"
+                    """
+                }
+            }
+        }
+        
+        stage('Health Check') {
+            steps {
+                script {
+                    echo "🏥 Checking application health..."
+                    sh """
+                        for i in {1..10}; do
+                            if curl -s http://localhost:${APP_PORT}/actuator/health > /dev/null; then
+                                echo "✅ Application is healthy!"
+                                exit 0
+                            fi
+                            echo "Waiting for app to start... (\$i/10)"
+                            sleep 3
+                        done
+                        echo "⚠️  Health check timed out, but app might still be starting"
+                        exit 0
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "🎉 Pipeline completed successfully!"
+            echo "🌐 Access the application at: http://localhost:${APP_PORT}"
+        }
+        failure {
+            echo "❌ Pipeline failed. Check the logs above."
+        }
+        always {
+            echo "📊 Build Summary:"
+            echo "   Version: ${env.BUILD_VERSION}"
+            echo "   Build: #${env.BUILD_NUMBER}"
+            echo "   Status: ${currentBuild.currentResult}"
+        }
+    }
+}
