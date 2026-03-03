@@ -3,11 +3,16 @@ apiVersion: v1
 kind: Service
 metadata:
   name: petclinic
+  labels:
+    app: petclinic
 spec:
   type: NodePort
   ports:
     - port: 80
       targetPort: 8080
+      nodePort: 30080  # Accessible at <node-ip>:30080
+      protocol: TCP
+      name: http
   selector:
     app: petclinic
 
@@ -18,8 +23,14 @@ metadata:
   name: petclinic
   labels:
     app: petclinic
+    version: "4.0.0"
 spec:
-  replicas: 1
+  replicas: 2  # Run 2 instances for high availability
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: petclinic
@@ -27,27 +38,49 @@ spec:
     metadata:
       labels:
         app: petclinic
+        version: "4.0.0"
     spec:
       containers:
-        - name: workload
-          image: dsyer/petclinic
+        - name: petclinic
+          # REPLACE THIS WITH YOUR DOCKER HUB USERNAME
+          # Example: image: your-dockerhub-username/spring-petclinic:4.0.0
+          image: gunacg/spring-petclinic:latest
+          imagePullPolicy: Always
           env:
             - name: SPRING_PROFILES_ACTIVE
-              value: postgres
-            - name: SERVICE_BINDING_ROOT
-              value: /bindings
-            - name: SPRING_APPLICATION_JSON
-              value: |
-                {
-                  "management.endpoint.health.probes.add-additional-paths": true
-                }
+              value: "prod"  # Use H2 by default, change to postgres if using DB
+            - name: JAVA_OPTS
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
           ports:
             - name: http
               containerPort: 8080
+              protocol: TCP
+          # Liveness probe - is the app running?
           livenessProbe:
             httpGet:
-              path: /livez
+              path: /actuator/health/liveness
               port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Readiness probe - is the app ready to serve traffic?
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 40
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Resource limits
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
           readinessProbe:
             httpGet:
               path: /readyz

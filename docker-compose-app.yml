@@ -1,0 +1,64 @@
+# ============================================
+# Docker Compose - Local Development & Testing
+# ============================================
+# This file helps you test the Docker image locally
+# before deploying to Kubernetes
+# ============================================
+# Usage:
+#   docker-compose build          # Build the image
+#   docker-compose up             # Run the container
+#   docker-compose down           # Stop and remove
+# ============================================
+
+version: '3.8'
+
+services:
+  # Spring PetClinic Application
+  petclinic:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: petclinic-app
+    image: gunacg/spring-petclinic:latest
+    ports:
+      - "8080:8080"  # Map host:container
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - petclinic-network
+
+  # Optional: PostgreSQL Database (if needed)
+  # Uncomment below to run with PostgreSQL
+  # postgres:
+  #   image: postgres:18.1-alpine
+  #   container_name: petclinic-postgres
+  #   environment:
+  #     - POSTGRES_DB=petclinic
+  #     - POSTGRES_USER=petclinic
+  #     - POSTGRES_PASSWORD=petclinic
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - petclinic-network
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U petclinic"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+networks:
+  petclinic-network:
+    driver: bridge
+
+# volumes:
+#   postgres-data:

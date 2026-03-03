@@ -1,0 +1,344 @@
+// ============================================
+// JENKINSFILE - Docker + Kubernetes Pipeline
+// ============================================
+// This pipeline demonstrates industry-standard practices:
+// 1. Build & Test (Maven)
+// 2. Containerize (Docker)
+// 3. Push to Registry (Docker Hub)
+// 4. Deploy to Kubernetes
+// ============================================
+
+pipeline {
+    agent any
+    
+    environment {
+        // Maven settings
+        MAVEN_OPTS = '-Xmx2g -XX:MaxMetaspaceSize=512m'
+        
+        // Docker settings
+        // IMPORTANT: Set your Docker Hub username here
+        DOCKER_REGISTRY = 'docker.io'
+        DOCKER_IMAGE_NAME = 'gunacg/spring-petclinic'  // Change 'gunacg' to your Docker Hub username
+        DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'  // Jenkins credential ID (we'll create this)
+        
+        // Kubernetes settings
+        K8S_NAMESPACE = 'default'
+        K8S_DEPLOYMENT_NAME = 'petclinic'
+    }
+    
+    stages {
+        // =====================================
+        // STAGE 1: SOURCE CODE CHECKOUT
+        // =====================================
+        stage('1️⃣ Checkout') {
+            steps {
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "📥 STAGE 1: Checking out source code..."
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                checkout scm
+                
+                script {
+                    // Extract version from pom.xml
+                    env.BUILD_VERSION = sh(
+                        script: "./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout",
+                        returnStdout: true
+                    ).trim()
+                    
+                    // Create Docker tag (use version or 'latest')
+                    env.DOCKER_TAG = "${env.BUILD_VERSION}"
+                    env.DOCKER_IMAGE_FULL = "${DOCKER_IMAGE_NAME}:${env.DOCKER_TAG}"
+                    
+                    echo "✅ Version: ${env.BUILD_VERSION}"
+                    echo "🐳 Docker Image: ${env.DOCKER_IMAGE_FULL}"
+                    
+                    // Set build metadata
+                    currentBuild.description = "Version: ${env.BUILD_VERSION}"
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} - ${env.BUILD_VERSION}"
+                }
+            }
+        }
+        
+        // =====================================
+        // STAGE 2: COMPILE SOURCE CODE
+        // =====================================
+        stage('2️⃣ Build') {
+            steps {
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "🔨 STAGE 2: Compiling source code..."
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                sh './mvnw clean compile -B'
+                
+                echo "✅ Build completed successfully"
+            }
+        }
+        
+        // =====================================
+        // STAGE 3: RUN UNIT TESTS
+        // =====================================
+        stage('3️⃣ Unit Tests') {
+            steps {
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "🧪 STAGE 3: Running unit tests..."
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                sh './mvnw test -B'
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+                    script {
+                        def testResults = junit 'target/surefire-reports/*.xml'
+                        echo "📊 Test Results: ${testResults.totalCount} tests, ${testResults.failCount} failures"
+                    }
+                }
+                success {
+                    echo "✅ All tests passed!"
+                }
+                failure {
+                    echo "❌ Tests failed!"
+                    error("Unit tests failed. Stopping pipeline.")
+                }
+            }
+        }
+        
+        // =====================================
+        // STAGE 4: PACKAGE APPLICATION
+        // =====================================
+        stage('4️⃣ Package') {
+            steps {
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "📦 STAGE 4: Packaging JAR file..."
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                sh './mvnw package -B -DskipTests'
+                
+                echo "✅ JAR file created"
+            }
+        }
+        
+        // =====================================
+        // STAGE 5: ARCHIVE ARTIFACTS
+        // =====================================
+        stage('5️⃣ Archive') {
+            steps {
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "💾 STAGE 5: Archiving artifacts..."
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                
+                echo "✅ Artifacts archived"
+            }
+        }
+        
+        // =====================================
+        // STAGE 6: BUILD DOCKER IMAGE
+        // =====================================
+        stage('6️⃣ Docker Build') {
+            steps {
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "🐳 STAGE 6: Building Docker image..."
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                script {
+                    // Build Docker image
+                    sh """
+                        docker build -t ${DOCKER_IMAGE_FULL} .
+                        docker tag ${DOCKER_IMAGE_FULL} ${DOCKER_IMAGE_NAME}:latest
+                    """
+                    
+                    echo "✅ Docker image built: ${DOCKER_IMAGE_FULL}"
+                    echo "✅ Tagged as: ${DOCKER_IMAGE_NAME}:latest"
+                    
+                    // Show image details
+                    sh "docker images | grep ${DOCKER_IMAGE_NAME}"
+                }
+            }
+        }
+        
+        // =====================================
+        // STAGE 7: PUSH TO DOCKER REGISTRY
+        // =====================================
+        stage('7️⃣ Docker Push') {
+            steps {
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "📤 STAGE 7: Pushing to Docker Hub..."
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                script {
+                    // Login to Docker Hub and push
+                    docker.withRegistry("https://${DOCKER_REGISTRY}", DOCKER_CREDENTIALS_ID) {
+                        sh """
+                            docker push ${DOCKER_IMAGE_FULL}
+                            docker push ${DOCKER_IMAGE_NAME}:latest
+                        """
+                    }
+                    
+                    echo "✅ Image pushed to Docker Hub"
+                    echo "🌐 Pull with: docker pull ${DOCKER_IMAGE_FULL}"
+                }
+            }
+        }
+        
+        // =====================================
+        // STAGE 8: TEST DOCKER IMAGE LOCALLY
+        // =====================================
+        stage('8️⃣ Docker Test') {
+            steps {
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "🧪 STAGE 8: Testing Docker container..."
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                script {
+                    // Stop any existing container
+                    sh """
+                        docker rm -f petclinic-test || true
+                    """
+                    
+                    // Run container for testing
+                    sh """
+                        docker run -d --name petclinic-test -p 8083:8080 ${DOCKER_IMAGE_FULL}
+                        sleep 20
+                    """
+                    
+                    // Health check
+                    def healthCheckPassed = false
+                    for (int i = 1; i <= 10; i++) {
+                        def result = sh(
+                            script: "curl -s http://localhost:8083/actuator/health",
+                            returnStatus: true
+                        )
+                        if (result == 0) {
+                            healthCheckPassed = true
+                            echo "✅ Container health check passed!"
+                            break
+                        }
+                        echo "Waiting for container to be healthy... (${i}/10)"
+                        sleep 3
+                    }
+                    
+                    // Show logs
+                    sh "docker logs petclinic-test --tail 20"
+                    
+                    // Cleanup test container
+                    sh "docker rm -f petclinic-test"
+                    
+                    if (!healthCheckPassed) {
+                        error("Docker container health check failed!")
+                    }
+                }
+            }
+        }
+        
+        // =====================================
+        // STAGE 9: DEPLOY TO KUBERNETES
+        // =====================================
+        stage('9️⃣ Deploy to K8s') {
+            steps {
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "☸️  STAGE 9: Deploying to Kubernetes..."
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                script {
+                    // Update the image in K8s deployment
+                    sh """
+                        kubectl set image deployment/${K8S_DEPLOYMENT_NAME} \
+                            petclinic=${DOCKER_IMAGE_FULL} \
+                            --namespace=${K8S_NAMESPACE} \
+                            --record
+                    """
+                    
+                    // Wait for rollout
+                    sh """
+                        kubectl rollout status deployment/${K8S_DEPLOYMENT_NAME} \
+                            --namespace=${K8S_NAMESPACE} \
+                            --timeout=300s
+                    """
+                    
+                    echo "✅ Deployment successful!"
+                    
+                    // Show deployment status
+                    sh """
+                        kubectl get deployments -n ${K8S_NAMESPACE}
+                        kubectl get pods -n ${K8S_NAMESPACE} -l app=petclinic
+                        kubectl get services -n ${K8S_NAMESPACE} -l app=petclinic
+                    """
+                }
+            }
+        }
+        
+        // =====================================
+        // STAGE 10: VERIFY DEPLOYMENT
+        // =====================================
+        stage('🔟 Verify K8s') {
+            steps {
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "✅ STAGE 10: Verifying deployment..."
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                
+                script {
+                    // Get pod status
+                    sh """
+                        kubectl get pods -n ${K8S_NAMESPACE} -l app=petclinic -o wide
+                    """
+                    
+                    // Check pod logs
+                    sh """
+                        POD_NAME=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=petclinic -o jsonpath='{.items[0].metadata.name}')
+                        echo "Checking logs for pod: \$POD_NAME"
+                        kubectl logs \$POD_NAME -n ${K8S_NAMESPACE} --tail=20
+                    """
+                    
+                    echo "✅ Deployment verified!"
+                }
+            }
+        }
+    }
+    
+    // =====================================
+    // POST-BUILD ACTIONS
+    // =====================================
+    post {
+        success {
+            script {
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "🎉 PIPELINE COMPLETED SUCCESSFULLY!"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "📦 Version:        ${env.BUILD_VERSION}"
+                echo "🏗️  Build:          #${env.BUILD_NUMBER}"
+                echo "🐳 Docker Image:   ${DOCKER_IMAGE_FULL}"
+                echo "☸️  K8s Namespace:  ${K8S_NAMESPACE}"
+                echo "⏱️  Duration:       ${currentBuild.durationString}"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo ""
+                echo "🌐 Access the application:"
+                echo "   Docker Hub:  https://hub.docker.com/r/${DOCKER_IMAGE_NAME}"
+                echo "   K8s Service: kubectl get service ${K8S_DEPLOYMENT_NAME} -n ${K8S_NAMESPACE}"
+                echo ""
+            }
+        }
+        failure {
+            echo "❌ Pipeline failed at stage: ${env.STAGE_NAME}"
+            echo "📋 Check the logs above for details"
+        }
+        always {
+            // Cleanup
+            script {
+                sh """
+                    docker rm -f petclinic-test || true
+                """
+            }
+            
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "📊 BUILD SUMMARY"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "   Status:      ${currentBuild.currentResult}"
+            echo "   Duration:    ${currentBuild.durationString}"
+            echo "   Started by:  ${currentBuild.getBuildCauses()[0].shortDescription}"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        }
+    }
+}

@@ -1,0 +1,63 @@
+# ============================================
+# .dockerignore - Exclude files from Docker build context
+# ============================================
+# This speeds up builds and reduces image size
+# ============================================
+
+# Build outputs
+target/
+!target/*.jar
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+LICENSE.txt
+docs/
+
+# CI/CD
+Jenkinsfile
+Jenkinsfile.professional
+.github/
+
+# Testing
+test-results/
+playwright-report/
+tests/
+specs/
+
+# Node/NPM (if any)
+node_modules/
+package.json
+package-lock.json
+
+# Docker
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
