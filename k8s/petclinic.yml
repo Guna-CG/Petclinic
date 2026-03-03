@@ -42,9 +42,8 @@ spec:
     spec:
       containers:
         - name: petclinic
-          # REPLACE THIS WITH YOUR DOCKER HUB USERNAME
-          # Example: image: your-dockerhub-username/spring-petclinic:4.0.0
-          image: gunacg/spring-petclinic:latest
+          # Docker Hub image
+          image: gunaseelanchandrasekaran/spring-petclinic:latest
           imagePullPolicy: Always
           env:
             - name: SPRING_PROFILES_ACTIVE

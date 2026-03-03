@@ -18,7 +18,7 @@ pipeline {
         // Docker settings
         // IMPORTANT: Set your Docker Hub username here
         DOCKER_REGISTRY = 'docker.io'
-        DOCKER_IMAGE_NAME = 'gunacg/spring-petclinic'  // Change 'gunacg' to your Docker Hub username
+        DOCKER_IMAGE_NAME = 'gunaseelanchandrasekaran/spring-petclinic'
         DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'  // Jenkins credential ID (we'll create this)
         
         // Kubernetes settings
