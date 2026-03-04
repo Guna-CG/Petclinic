@@ -201,7 +201,7 @@ pipeline {
                     
                     // Run container for testing
                     sh """
-                        docker run -d --name petclinic-test -p 8083:8080 ${DOCKER_IMAGE_FULL}
+                        docker run -d --name petclinic-test -p 8084:8080 ${DOCKER_IMAGE_FULL}
                         sleep 20
                     """
                     
@@ -209,7 +209,7 @@ pipeline {
                     def healthCheckPassed = false
                     for (int i = 1; i <= 10; i++) {
                         def result = sh(
-                            script: "curl -s http://localhost:8083/actuator/health",
+                            script: "curl -s http://localhost:8084/actuator/health",
                             returnStatus: true
                         )
                         if (result == 0) {
