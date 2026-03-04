@@ -205,11 +205,11 @@ pipeline {
                         sleep 20
                     """
                     
-                    // Health check
+                    // Health check - use container name for Docker networking
                     def healthCheckPassed = false
                     for (int i = 1; i <= 10; i++) {
                         def result = sh(
-                            script: "curl -s http://localhost:8084/actuator/health",
+                            script: "curl -s http://petclinic-test:8080/actuator/health",
                             returnStatus: true
                         )
                         if (result == 0) {
