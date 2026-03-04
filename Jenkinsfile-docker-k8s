@@ -199,9 +199,9 @@ pipeline {
                         docker rm -f petclinic-test || true
                     """
                     
-                    // Run container for testing
+                    // Run container for testing on same network as Jenkins
                     sh """
-                        docker run -d --name petclinic-test -p 8084:8080 ${DOCKER_IMAGE_FULL}
+                        docker run -d --name petclinic-test --network jenkins-setup_jenkins-network -p 8084:8080 ${DOCKER_IMAGE_FULL}
                         sleep 20
                     """
                     
